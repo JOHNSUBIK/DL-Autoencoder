@@ -1,239 +1,183 @@
-# DL – Developing a Neural Network Classification Model using Transfer Learning
+# DL- Convolutional Autoencoder for Image Denoising
 
 ## AIM
-To develop an image classification model using transfer learning with VGG19 architecture for the given dataset.
+To develop a convolutional autoencoder for image denoising application.
 
-## THEORY
-Transfer Learning is a technique where a pre-trained model (trained on a large dataset such as ImageNet) is used as a starting point for a different but related task. It leverages learned features from the original task to improve learning efficiency and performance on the new task.
-
-VGG19 is a convolutional neural network with 19 layers. It consists of multiple convolutional layers for feature extraction, followed by fully connected layers for classification. In transfer learning, we typically freeze the convolutional layers and retrain the final fully connected layers to match our dataset.
-
-### Neural Network Model
-**VGG19 Architecture for Transfer Learning:**
-
-Input Image (224x224x3)
-│
-[Convolution + ReLU] x multiple layers
-│
-Max Pooling layers
-│
-Flatten Layer
-│
-Fully Connected Layer (4096)
-│
-Fully Connected Layer (4096)
-│
-Final Fully Connected Layer → num_classes (retrained)
-│
-Softmax Activation → Class Probabilities
+## Neural Network Model
+Include the neural network model diagram.
 
 ## DESIGN STEPS
-### STEP 1: Load and Preprocess Dataset
-- Unzip the dataset and organize into train and test folders.  
-- Resize all images to 224x224.  
-- Convert images to tensors and optionally normalize them.
+# STEP 1:
+Load MNIST data and add noise to images.
 
-### STEP 2: Load Pretrained Model
-- Load VGG19 model from `torchvision.models`.  
-- Replace the last fully connected layer to match `num_classes` of your dataset.
+# STEP 2:
+Build a convolutional autoencoder.
 
-### STEP 3: Define Loss and Optimizer
-- Use `CrossEntropyLoss` for multi-class classification.  
-- Use `Adam` optimizer to train only the final layer.
+# STEP 3:
+Train the model with noisy images, minimizing MSE loss.
 
-### STEP 4: Train the Model
-- Freeze feature extractor layers.  
-- Train only the final classifier for a few epochs.  
-- Track training loss and validation loss for each epoch.
+# STEP 4:
+Update weights using backpropagation.
 
-### STEP 5: Evaluate the Model
-- Predict on the test set.  
-- Compute accuracy, confusion matrix, and classification report.
+# STEP 5:
+Test the model and visualize original, noisy, and denoised images.
 
-### STEP 6: Predict on New Samples
-- Select a test image.  
-- Pass through the model and display predicted and actual class.
-
-
-
+# STEP 6:
+Repeat through multiple epochs for better denoising performance.
 
 
 
 ## PROGRAM
+### Name:JOHN PAUL J
 
-### Name: John Paul J
+### Register Number:212223230093
 
-### Register Number: 212223230093
-
-```python
-
+# Autoencoder for Image Denoising using PyTorch
+```
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision import models, datasets, transforms
+from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, classification_report
-import seaborn as sns
+import numpy as np
+from torchsummary import summary
 
-# Step 1: Load Data
+
+# Device configuration
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# Transform: Normalize and convert to tensor
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
     transforms.ToTensor()
 ])
 
-!unzip -qq ./chip_data.zip -d data
-train_dataset = datasets.ImageFolder(root="./data/dataset/train", transform=transform)
-test_dataset = datasets.ImageFolder(root="./data/dataset/test", transform=transform)
+# Load MNIST dataset
+dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-```
-
-```python
-# Step 2: Load Pretrained Model
-model = models.vgg19(pretrained=True)
-num_classes = len(train_dataset.classes)
-model.classifier[6] = nn.Linear(model.classifier[6].in_features, num_classes)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
-
-# Freeze feature extractor layers
-for param in model.features.parameters():
-    param.requires_grad = False
+train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
 
 
-```
-```python
-# Step 3: Loss and Optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.classifier[6].parameters(), lr=0.001)
+# Add noise to images
+def add_noise(inputs, noise_factor=0.5):
+    noisy = inputs + noise_factor * torch.randn_like(inputs)
+    return torch.clamp(noisy, 0., 1.)
 
-```
-```python
-# Step 4: Train Model
-def train_model(model, train_loader, test_loader, num_epochs=10):
-    train_losses, val_losses = [], []
-    model.train()
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        train_losses.append(running_loss / len(train_loader))
 
-        # Validation loss
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-        val_losses.append(val_loss / len(test_loader))
-        model.train()
-        print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}")
+# Define Autoencoder
+class DenoisingAutoencoder(nn.Module):
+    def __init__(self):
+        super(DenoisingAutoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
 
-    plt.figure(figsize=(8,6))
-    plt.plot(range(1, num_epochs+1), train_losses, label="Train Loss", marker='o')
-    plt.plot(range(1, num_epochs+1), val_losses, label="Validation Loss", marker='s')
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title("Training and Validation Loss")
-    plt.legend()
-    plt.show()
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=1, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, output_padding=1, padding=1),
+            nn.Sigmoid()
+        )
 
-train_model(model, train_loader, test_loader, num_epochs=10)
-```
-```python
-# Step 5: Evaluate Model
-def test_model(model, test_loader):
+
+    def forward(self, x):
+     x=self.encoder(x)
+     x=self.decoder(x)
+     return x
+
+# Initialize model, loss function and optimizer
+model = DenoisingAutoencoder().to(device)
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+# Print model summary
+summary(model, input_size=(1, 28, 28))
+
+# Train the autoencoder
+def train(model, loader, criterion, optimizer, epochs=5):
+  model.train()
+  print("Name: JOHN PAUL J")
+  print("Register Number: 212223230093")
+  for epoch in range(epochs):
+    running_loss = 0.0
+    for images, _ in loader:
+        images = images.to(device)
+        noisy_images = add_noise(images).to(device)
+
+        outputs = model(noisy_images)
+        loss = criterion(outputs, images)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+
+    print(f"Epoch {epoch+1}/{epochs}, Loss: {running_loss/len(loader)}")
+
+# Evaluate and visualize
+def visualize_denoising(model, loader, num_images=10):
     model.eval()
-    all_preds, all_labels = [], []
-    correct, total = 0, 0
     with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            all_preds.extend(predicted.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-    accuracy = correct / total
-    print(f"Test Accuracy: {accuracy:.4f}")
+        for images, _ in loader:
+            images = images.to(device)
+            noisy_images = add_noise(images).to(device)
+            outputs = model(noisy_images)
+            break
 
-    cm = confusion_matrix(all_labels, all_preds)
-    plt.figure(figsize=(8,6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=train_dataset.classes,
-                yticklabels=train_dataset.classes)
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    plt.title("Confusion Matrix")
+    images = images.cpu().numpy()
+    noisy_images = noisy_images.cpu().numpy()
+    outputs = outputs.cpu().numpy()
+
+    print("Name: ALAN ZION H")
+    print("Register Number: 212223240004")
+    plt.figure(figsize=(18, 6))
+    for i in range(num_images):
+        # Original
+        ax = plt.subplot(3, num_images, i + 1)
+        plt.imshow(images[i].squeeze(), cmap='gray')
+        ax.set_title("Original")
+        plt.axis("off")
+
+        # Noisy
+        ax = plt.subplot(3, num_images, i + 1 + num_images)
+        plt.imshow(noisy_images[i].squeeze(), cmap='gray')
+        ax.set_title("Noisy")
+        plt.axis("off")
+
+        # Denoised
+        ax = plt.subplot(3, num_images, i + 1 + 2 * num_images)
+        plt.imshow(outputs[i].squeeze(), cmap='gray')
+        ax.set_title("Denoised")
+        plt.axis("off")
+
+    plt.tight_layout()
     plt.show()
 
-    print("Classification Report:")
-    print(classification_report(all_labels, all_preds, target_names=train_dataset.classes))
 
-test_model(model, test_loader)
+# Run training and visualization
+train(model, train_loader, criterion, optimizer, epochs=5)
+visualize_denoising(model, test_loader)
+
+
 ```
-```python
-# Step 6: Predict on Single Image
-def predict_image(model, image_index, dataset):
-    model.eval()
-    image, label = dataset[image_index]
-    with torch.no_grad():
-        image_tensor = image.unsqueeze(0).to(device)
-        output = model(image_tensor)
-        prob = torch.softmax(output, dim=1)
-        predicted = torch.argmax(prob, dim=1).item()
-    class_names = dataset.classes
-    plt.imshow(transforms.ToPILImage()(image))
-    plt.title(f"Actual: {class_names[label]}\nPredicted: {class_names[predicted]}")
-    plt.axis("off")
-    plt.show()
-    print(f"Actual: {class_names[label]}, Predicted: {class_names[predicted]}")
-
-predict_image(model, image_index=55, dataset=test_dataset)
-predict_image(model, image_index=25, dataset=test_dataset)
-```
-
 ### OUTPUT
 
-## Training Loss
- <img width="539" height="249" alt="image" src="https://github.com/user-attachments/assets/cdc4a92e-09e2-49a7-8463-d2f0ab88203f" />
+### Model Summary
+<img width="730" height="436" alt="Screenshot 2025-11-10 215628" src="https://github.com/user-attachments/assets/1a1f1275-465e-476b-ae8b-7c4a4ea845a1" />
 
+### Training loss
+<img width="378" height="158" alt="Screenshot 2025-11-10 215620" src="https://github.com/user-attachments/assets/2e7c8333-ef49-40cf-949d-0ac85749e5e0" />
 
-## Validation Loss Vs Iteration Plot
+## Original vs Noisy Vs Reconstructed Image
+<img width="1686" height="605" alt="Screenshot 2025-11-10 215600" src="https://github.com/user-attachments/assets/c277a806-3730-48bd-9086-fba034b4e07b" />
 
-<img width="756" height="601" alt="image" src="https://github.com/user-attachments/assets/1eb5bb4e-d453-447c-bb1c-70e10e74e11b" />
-
-
-## Confusion Matrix
-
-<img width="708" height="660" alt="image" src="https://github.com/user-attachments/assets/84cc7f98-7207-4bc4-9bca-1e9c3d5f2378" />
-
-## Classification Report
-
-<img width="478" height="249" alt="image" src="https://github.com/user-attachments/assets/973b56cd-bca9-4545-8220-96aa2184a921" />
-
-
-### New Sample Data Prediction
-
-<img width="413" height="467" alt="image" src="https://github.com/user-attachments/assets/b275017b-9913-4523-82b2-834dbd33e698" />
-
-
-<img width="396" height="475" alt="image" src="https://github.com/user-attachments/assets/7c1d7d0d-b253-4005-a2b4-fcd47394d589" />
 
 ## RESULT
-The model successfully classifies images from the dataset using transfer learning with VGG19. 
-By freezing the convolutional layers and retraining the classifier, 
-it achieves good accuracy while reducing training time.
+Thus, a convolutional autoencoder for image denoising application has been developed.
